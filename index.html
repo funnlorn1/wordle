@@ -1,102 +1,80 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#171020">
-  <meta name="description" content="FUNNLORN WORDLE — угадай слово дня за 6 попыток!">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100b20">
   <title>FUNNLORN WORDLE</title>
+  <meta name="description" content="FUNNLORN WORDLE — угадай слово дня.">
   <link rel="stylesheet" href="style.css">
-  <script src="words.js" defer></script>
-  <script src="script.js" defer></script>
+  <script defer src="words.js"></script>
+  <script defer src="script.js"></script>
 </head>
 <body>
-  <div class="app">
-    <header class="header">
-      <button class="icon-button" id="help-button" aria-label="Правила">?</button>
+  <main class="app">
+    <header class="topbar">
+      <button class="icon-button" id="help-button" aria-label="Правила" title="Правила">?</button>
       <div class="brand">
-        <h1>FUNNLORN<span>WORDLE</span></h1>
-        <p>УГАДАЙ СЛОВО ДНЯ</p>
+        <p class="eyebrow">DAILY WORD GAME</p>
+        <h1>FUNNLORN <span>WORDLE</span></h1>
+        <p class="subtitle">УГАДАЙ СЛОВО ДНЯ</p>
       </div>
-      <button class="icon-button" id="stats-button" aria-label="Статистика">▥</button>
+      <button class="icon-button" id="stats-button" aria-label="Статистика" title="Статистика">▥</button>
     </header>
 
-    <main>
-      <div class="daily-info">
-        <span class="live-dot"></span>
-        <span>DAILY CHALLENGE</span>
-        <span class="separator">/</span>
-        <span id="date-label">WORD #001</span>
-      </div>
-
-      <div id="message" class="message" role="status" aria-live="polite"></div>
-
-      <section id="board" class="board" aria-label="Игровое поле"></section>
-
-      <div class="attempt-info">
-        <span>ПОПЫТКИ</span>
-        <span id="attempt-count">0 / 6</span>
-      </div>
-
-      <section id="keyboard" class="keyboard"
-        aria-label="Экранная клавиатура"></section>
-
-      <div class="bottom-actions">
-        <button id="restart-button" class="secondary-button">
-          ↻ Новая игра
-        </button>
-        <button id="share-button" class="primary-button">
-          Поделиться ↗
-        </button>
-      </div>
-
-      <div class="footer">
-        <span>MADE WITH ♥ BY FUNNLORN</span>
-        <span>V 1.0</span>
-      </div>
-    </main>
-  </div>
-
-  <dialog id="help-dialog">
-    <button class="dialog-close" data-close aria-label="Закрыть">×</button>
-    <h2>Как играть?</h2>
-    <p>Угадай слово из пяти букв за шесть попыток.</p>
-    <div class="example">
-      <span class="tile correct">М</span>
-      <span class="tile">А</span>
-      <span class="tile">С</span>
-      <span class="tile">Л</span>
-      <span class="tile">О</span>
+    <div class="challenge-line">
+      <span class="status-dot"></span>
+      <span id="mode-label">DAILY CHALLENGE</span>
+      <span class="slash">/</span>
+      <span id="word-number">WORD #001</span>
     </div>
-    <p>🟩 Буква на правильном месте.</p>
-    <p>🟨 Буква есть, но находится в другом месте.</p>
-    <p>⬛ Буквы нет в загаданном слове.</p>
-    <p class="muted">Слово дня одинаково для всех игроков.</p>
+
+    <section class="game" aria-label="Игровое поле">
+      <div id="board" class="board" aria-label="Поле из шести попыток"></div>
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+      <div class="attempts-line"><span>ПОПЫТКИ</span><strong id="attempts">0 / 6</strong></div>
+      <div id="keyboard" class="keyboard" aria-label="Экранная клавиатура"></div>
+    </section>
+
+    <div class="actions">
+      <button class="secondary-button" id="restart-button">↻ Новая игра</button>
+      <button class="primary-button" id="share-button">Поделиться ↗</button>
+    </div>
+
+    <footer><span>MADE WITH ♥ BY FUNNLORN</span><span>V 2.0</span></footer>
+  </main>
+
+  <dialog id="help-dialog" class="modal">
+    <button class="modal-close" data-close="help-dialog" aria-label="Закрыть">×</button>
+    <p class="eyebrow">КАК ИГРАТЬ</p>
+    <h2>Угадай слово из 5 букв</h2>
+    <p>У тебя есть шесть попыток. После каждой попытки цвет букв подскажет, насколько близко ты к ответу.</p>
+    <div class="example"><span class="tile correct">С</span><span>Буква на своём месте.</span></div>
+    <div class="example"><span class="tile present">А</span><span>Буква есть, но стоит не там.</span></div>
+    <div class="example"><span class="tile absent">М</span><span>Такой буквы в слове нет.</span></div>
+    <p class="small-note">«Новая игра» запускает тренировочную партию и не меняет результат слова дня.</p>
   </dialog>
 
-  <dialog id="stats-dialog">
-    <button class="dialog-close" data-close aria-label="Закрыть">×</button>
-    <h2>Твоя статистика</h2>
+  <dialog id="stats-dialog" class="modal">
+    <button class="modal-close" data-close="stats-dialog" aria-label="Закрыть">×</button>
+    <p class="eyebrow">ТВОЙ ПРОГРЕСС</p>
+    <h2>Статистика</h2>
     <div class="stats-grid">
       <div><strong id="stat-played">0</strong><span>Игр</span></div>
-      <div><strong id="stat-win">0%</strong><span>Побед</span></div>
+      <div><strong id="stat-wins">0%</strong><span>Побед</span></div>
       <div><strong id="stat-streak">0</strong><span>Серия</span></div>
-      <div><strong id="stat-best">0</strong><span>Рекорд</span></div>
+      <div><strong id="stat-max-streak">0</strong><span>Лучшая серия</span></div>
     </div>
-    <h3>Распределение попыток</h3>
-    <div id="guess-distribution" class="distribution"></div>
+    <h3>Распределение побед</h3>
+    <div id="stats-distribution" class="distribution"></div>
   </dialog>
-
   <script>
-    document.querySelectorAll("[data-close]").forEach(button => {
-      button.addEventListener("click", () => button.closest("dialog").close());
-    });
-
-    document.getElementById("help-button").onclick = () =>
-      document.getElementById("help-dialog").showModal();
-
-    document.getElementById("stats-button").onclick = () =>
-      document.getElementById("stats-dialog").showModal();
+    document.getElementById("help-button").addEventListener("click", () => document.getElementById("help-dialog").showModal());
+    document.getElementById("stats-button").addEventListener("click", () => document.getElementById("stats-dialog").showModal());
+    document.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", () => document.getElementById(button.dataset.close).close()));
+    document.querySelectorAll("dialog").forEach(dialog => dialog.addEventListener("click", event => {
+      if (event.target === dialog) dialog.close();
+    }));
   </script>
 </body>
 </html>
