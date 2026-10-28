@@ -1,387 +1,501 @@
-(() => {
-  "use strict";
+"use strict";
 
-  const ROWS = 6;
-  const COLS = 5;
-  const STORAGE_KEY = "funnlorn-wordle-v1";
+// FUNNLORN WORDLE
 
-  const $ = id => document.getElementById(id);
+const WORD_LENGTH = 5;
+const MAX_ATTEMPTS = 6;
+const STORAGE_KEY = "funnlorn-wordle-v2";
+const STATS_KEY = "funnlorn-wordle-stats-v2";
 
-  const board = $("board");
-  const keyboard = $("keyboard");
-  const message = $("message");
+const normalize = (word) =>
+  String(word).trim().toUpperCase().replace(/Ё/g, "Е");
 
-  const normalize = word => word
-    .toLocaleUpperCase("ru-RU")
-    .replace(/Ё/g, "Е");
+const answers = [...new Set(
+  (typeof WORDS !== "undefined" ? WORDS : [])
+    .map(normalize)
+    .filter(word => /^[А-Я]{5}$/.test(word))
+)];
 
-  // Оставляем только слова из пяти букв.
-  const answers = [...new Set(
-    WORDS.map(normalize).filter(word => /^[А-Я]{5}$/.test(word))
-  )];
+const validWords = new Set(answers);
 
-  const validWords = new Set(answers);
+const board = document.getElementById("board");
+const keyboard = document.getElementById("keyboard");
+const message = document.getElementById("message");
+const attemptsElement =
+  document.getElementById("attempts") ||
+  document.getElementById("attempt-count");
 
-  if (answers.length === 0) {
-    message.textContent = "Словарь пуст. Проверь файл words.js.";
+const restartButton = document.getElementById("restart-button");
+const shareButton = document.getElementById("share-button");
+
+const keyboardRows = [
+  "ЙЦУКЕНГШЩЗХ",
+  "ФЫВАПРОЛДЖЭ",
+  "ЯЧСМИТЬБЮ"
+];
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function dailyWord() {
+  if (!answers.length) return "СЛОВО";
+
+  const start = Date.UTC(2026, 0, 1);
+  const today = new Date();
+  const currentDay = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate()
+  );
+
+  const dayNumber = Math.floor((currentDay - start) / 86400000);
+  const index = ((dayNumber % answers.length) + answers.length) % answers.length;
+
+  return answers[index];
+}
+
+function randomWord(exclude = "") {
+  if (!answers.length) return "СЛОВО";
+
+  const options = answers.filter(word => word !== exclude);
+  const pool = options.length ? options : answers;
+
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function readStorage(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStorage(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Игра продолжит работать, даже если хранилище недоступно.
+  }
+}
+
+function emptyStats() {
+  return {
+    played: 0,
+    wins: 0,
+    streak: 0,
+    maxStreak: 0,
+    distribution: [0, 0, 0, 0, 0, 0],
+    lastPlayed: ""
+  };
+}
+
+let stats = {
+  ...emptyStats(),
+  ...readStorage(STATS_KEY, {})
+};
+
+let mode = "daily";
+let target = dailyWord();
+let guesses = [];
+let currentGuess = "";
+let finished = false;
+let gameResult = "";
+let messageTimer = null;
+let tileElements = [];
+let keyElements = {};
+
+function showMessage(text, duration = 1800) {
+  if (!message) return;
+
+  message.textContent = text;
+  message.classList.add("show");
+
+  clearTimeout(messageTimer);
+
+  if (duration > 0) {
+    messageTimer = setTimeout(() => {
+      message.classList.remove("show");
+    }, duration);
+  }
+}
+
+function createBoard() {
+  if (!board) return;
+
+  board.replaceChildren();
+  tileElements = [];
+
+  for (let row = 0; row < MAX_ATTEMPTS; row++) {
+    const rowElement = document.createElement("div");
+    rowElement.className = "board-row";
+
+    for (let col = 0; col < WORD_LENGTH; col++) {
+      const tile = document.createElement("div");
+      tile.className = "tile";
+      tile.setAttribute("aria-label", `Строка ${row + 1}, буква ${col + 1}`);
+      rowElement.appendChild(tile);
+      tileElements.push(tile);
+    }
+
+    board.appendChild(rowElement);
+  }
+}
+
+function createKeyboard() {
+  if (!keyboard) return;
+
+  keyboard.replaceChildren();
+  keyElements = {};
+
+  keyboardRows.forEach((letters, index) => {
+    const row = document.createElement("div");
+    row.className = "keyboard-row";
+
+    if (index === 2) {
+      const enter = makeKey("ВВОД", "enter-key");
+      row.appendChild(enter);
+    }
+
+    for (const letter of letters) {
+      const key = makeKey(letter, "letter-key");
+      row.appendChild(key);
+    }
+
+    if (index === 2) {
+      const backspace = makeKey("⌫", "backspace-key");
+      row.appendChild(backspace);
+    }
+
+    keyboard.appendChild(row);
+  });
+}
+
+function makeKey(label, extraClass = "") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `key ${extraClass}`.trim();
+  button
+
+
+er();
     return;
   }
 
-  // Дата в UTC обеспечивает одно слово дня для всех игроков.
-  function getDailyInfo() {
-    const date = new Date();
-    const day = Date.UTC(
-      date.getUTCFullYear(),
-      date.getUTCMonth(),
-      date.getUTCDate()
-    );
-
-    const epoch = Date.UTC(2026, 0, 1);
-    const dayNumber = Math.floor((day - epoch) / 86400000);
-
-    return {
-      date: date.toISOString().slice(0, 10),
-      number: dayNumber + 1,
-      answer: answers[((dayNumber % answers.length) + answers.length) % answers.length]
-    };
+  if (/^[а-яё]$/i.test(event.key)) {
+    addLetter(event.key);
   }
-
-  const daily = getDailyInfo();
-
-  $("date-label").textContent =
-    "WORD #" + String(daily.number).padStart(3, "0");
-
-  let guesses = [];
-  let current = "";
-  let finished = false;
-  let won = false;
-  let revealAnswer = false;
-  let keyStates = {};
-  let stats = loadStats();
-
-  function loadStats() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
-        played: 0,
-        wins: 0,
-        streak: 0,
-        best: 0,
-        lastPlayed: "",
-        distribution: [0, 0, 0, 0, 0, 0],
-        games: {}
-      };
-    } catch {
-      return {
-        played: 0,
-        wins: 0,
-        streak: 0,
-        best: 0,
-        lastPlayed: "",
-        distribution: [0, 0, 0, 0, 0, 0],
-        games: {}
-      };
-    }
-  }
-
-  function saveStats() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
-    } catch {
-      // Игра продолжает работать, даже если хранилище недоступно.
-    }
-  }
-
-  function saveGame() {
-    try {
-      localStorage.setItem("funnlorn-wordle-game-v1", JSON.stringify({
-        date: daily.date,
-        guesses,
-        finished,
-        won,
-        revealAnswer,
-        keyStates
-      }));
-    } catch {}
-  }
-
-  function restoreGame() {
-    try {
-      const saved = JSON.parse(
-        localStorage.getItem("funnlorn-wordle-game-v1")
-      );
-
-      if (!saved || saved.date !== daily.date) return;
-
-      const validSavedGuesses = Array.isArray(saved.guesses)
-        ? saved.guesses.filter(word =>
-            typeof word === "string" &&
-            /^[А-Я]{5}$/.test(word) &&
-            validWords.has(word)
-          ).slice(0, ROWS)
-        : [];
-
-      guesses = validSavedGuesses;
-      finished = Boolean(saved.finished);
-      won = Boolean(saved.won);
-      revealAnswer = Boolean(saved.revealAnswer);
-      keyStates = saved.keyStates || {};
-
-      if (guesses.length >= ROWS) finished = true;
-      if (guesses.includes(daily.answer)) {
-        finished = true;
-        won = true;
-      }
-
-      if (finished && !revealAnswer) {
-        revealAnswer = true;
-      }
-    } catch {}
-  }
-
-  const keyboardRows = [
-    ["Й","Ц","У","К","Е","Н","Г","Ш","Щ","З","Х"],
-    ["Ф","Ы","В","А","П","Р","О","Л","Д","Ж","Э"],
-    ["ENTER","Я","Ч","С","М","И","Т","Ь","Б","Ю","⌫"]
-  ];
-
-  function createBoard() {
-    board.replaceChildren();
-
-    for (let row = 0; row < ROWS; row++) {
-      for (let col = 0; col < COLS; col++) {
-        const tile = document.createElement("div");
-        tile.className = "tile";
-        tile.id = `tile-${row}-${col}`;
-        tile.setAttribute("aria-label", `Попытка ${row + 1}, буква ${col + 1}`);
-        board.appendChild(tile);
-      }
-    }
-  }
-
-  function createKeyboard() {
-    keyboard.replaceChildren();
-
-    keyboardRows.forEach((letters, rowIndex) => {
-      const row = document.createElement("div");
-      row.className = "key-row";
-
-      letters.forEach(letter => {
-        const button = document
-TILE – Bluetooth Tracker
-TILE – Bluetooth Tracker
-tile.id
-
-
-ateElement("button");
-        button.type = "button";
-        button.className = "key";
-        button.textContent = letter;
-        button.dataset.key = letter;
-        button.setAttribute("aria-label",
-          letter === "ENTER" ? "Проверить слово" :
-          letter === "⌫" ? "Удалить букву" : letter
-        );
-
-        if (letter === "ENTER" || letter === "⌫") {
-          button.classList.add("wide");
-        }
-
-        button.addEventListener("click", () => handleKey(letter));
-        row.appendChild(button);
-      });
-
-      keyboard.appendChild(row);
-    });
-  }
-
-  function renderBoard() {
-    for (let row = 0; row < ROWS; row++) {
-      const guess = guesses[row] || "";
-      const isCurrent = row === guesses.length && !finished;
-
-      for (let col = 0; col < COLS; col++) {
-        const tile = $(`tile-${row}-${col}`);
-        const letter = isCurrent
-          ? current[col] || ""
-          : guess[col] || "";
-
-        tile.textContent = letter;
-        tile.className = "tile";
-
-        if (letter) tile.classList.add("filled");
-
-        if (row < guesses.length) {
-          const result = evaluateGuess(guess, daily.answer);
-          tile.classList.add(result[col]);
-        }
-      }
-    }
-
-    $("attempt-count").textContent =
-      `${guesses.length} / ${ROWS}`;
-  }
-
-  // Правильно обрабатываем повторяющиеся буквы.
-  function evaluateGuess(guess, answer) {
-    const result = Array(COLS).fill("absent");
-    const remaining = answer.split("");
-
-    for (let i = 0; i < COLS; i++) {
-      if (guess[i] === answer[i]) {
-        result[i] = "correct";
-        remaining[i] = null;
-      }
-    }
-
-    for (let i = 0; i < COLS; i++) {
-      if (result[i] === "correct") continue;
-
-      const index = remaining.indexOf(guess[i]);
-
-      if (index !== -1) {
-        result[i] = "present";
-        remaining[index] = null;
-      }
-    }
-
-    return result;
-  }
-
-  function renderKeyboard() {
-    document.querySelectorAll(".key").forEach(button => {
-      const state = keyStates[button.dataset.key];
-
-      button.classList.remove("correct", "present", "absent");
-
-      if (state) button.classList.add(state);
-    });
-  }
-
-  function showMessage(text) {
-    message.textContent = text;
-  }
-
-  function handleKey(key) {
-    if (finished) return;
-
-    if (key === "ENTER") {
-      submitGuess();
-      return;
-    }
-
-    if (key === "⌫" || key === "BACKSPACE") {
-      current = current.slice(0, -1);
-      renderBoard();
-      return;
-    }
-
-    const letter = normalize(key);
-
-    if (/^[А-Я]$/.test(letter) && current.length < COLS) {
-      current += letter;
-      renderBoard();
-    }
-  }
-
-  function submitGuess() {
-    if (current.length !== COLS) {
-      showMessage("Нужно ввести 5 букв");
-      return;
-    }
-
-    if (!validWords.has(current)) {
-      showMessage("Этого слова нет в словаре");
-      shakeCurrentRow();
-      return;
-    }
-
-    const guess = current;
-    guesses.push(guess);
-    current = "";
-
-    const result = evaluateGuess(guess, daily.answer);
-
-    result.forEach((state, index) => {
-      const letter = guess[index];
-      const previous = keyStates[letter];
-
-      const priority = {
-        absent: 1,
-        present: 2,
-        correct: 3
-      };
-
-      if (!previous || priority[state] > priority[previous]) {
-        keyStates[letter] = state;
-      }
-    });
-
-    if (guess === daily.answer) {
-      finished = true;
-      won = true;
-      revealAnswer = true;
-      showMessage("Идеально! Ты угадал слово 🎉");
-      recordResult(true);
-    } else if (guesses.length >= ROWS) {
-      finished = true;
-      revealAnswer = true;
-      showMessage(`Попытки закончились. Слово: ${daily.answer}`);
-      recordResult(false);
-    } else {
-      showMessage("Продолжай, у тебя получится!");
-    }
-
-    renderBoard();
-    renderKeyboard();
-    saveGame();
-  }
-
-  function shakeCurrentRow() {
-    const row = guesses.length;
-
-    for (let col = 0; col < COLS; col++) {
-      $(`tile-${row}-${col}`).classList.remove("shake");
-      void $(`tile-${row}-${col}`).offsetWidth;
-      $(`tile-${row}-${col}`).classList.add("shake");
-    }
-
-
 }
 
-  function recordResult(didWin) {
-    // Не записываем результат повторно за этот день.
-    if (stats.games[daily.date]) return;
+if (restartButton) {
+  restartButton.addEventListener("click", startTrainingGame);
+}
 
-    stats.played++;
-    stats.lastPlayed = daily.date;
-    stats.games[daily.date] = {
-      won: didWin,
-      attempts: didWin ? guesses.length : null
-    };
+if (shareButton) {
+  shareButton.addEventListener("click", shareResult);
+}
 
-    if (didWin) {
-      stats.wins++;
-      stats.streak++;
-      stats.best = Math.max(stats.best, stats.streak);
-      stats.distribution[guesses.length - 1]++;
-    } else {
-      stats.streak = 0;
-    }
+document.addEventListener("keydown", handlePhysicalKeyboard);
 
-    saveStats();
-    renderStats();
+// Дополнительная защита от пустого или невалидного словаря.
+if (!answers.length) {
+  showMessage("Ошибка словаря: нет подходящих слов", 0);
+} else {
+  createBoard();
+  createKeyboard();
+  startDailyGame();
+  renderStats();
+}.tex
+
+
+tContent = label;
+  button.setAttribute("aria-label", label === "⌫" ? "Удалить букву" : label);
+
+  if (label.length === 1 && /^[А-ЯЁ]$/.test(label)) {
+    keyElements[normalize(label)] = button;
   }
 
-  function renderStats() {
-    $("stat-played").textContent = stats.played;
-    $("stat-win").textContent = stats.played
-      ? Math.round(stats.wins / stats.played * 100) + "%"
-      : "0%";
-    $("stat-streak").textContent = stats.streak;
-    $("stat-best").textContent = stats.best;
+  button.addEventListener("click", () => {
+    if (label === "ВВОД") {
+      submitGuess();
+    } else if (label === "⌫") {
+      deleteLetter();
+    } else {
+      addLetter(label);
+    }
+  });
 
-    const distribution = $("guess-distribution");
+  return button;
+}
+
+function currentRowIndex() {
+  return guesses.length;
+}
+
+function renderBoard() {
+  if (!board) return;
+
+  const letters = guesses.join("") + currentGuess;
+  const colors = guesses.map(guess => scoreGuess(guess, target));
+
+  tileElements.forEach((tile, index) => {
+    const row = Math.floor(index / WORD_LENGTH);
+    const col = index % WORD_LENGTH;
+    const letter = letters[row * WORD_LENGTH + col] || "";
+
+    tile.textContent = letter;
+    tile.classList.remove(
+      "filled", "correct", "present", "absent", "flip"
+    );
+
+    if (letter) tile.classList.add("filled");
+
+    if (row < guesses.length) {
+      const status = colors[row][col];
+      tile.classList.add(status);
+    }
+  });
+
+  if (attemptsElement) {
+    attemptsElement.textContent =
+      `${guesses.length}/${MAX_ATTEMPTS}`;
+  }
+}
+
+function scoreGuess(guess, answer) {
+  const result = Array(WORD_LENGTH).fill("absent");
+  const remaining = answer.split("");
+
+  // Сначала отмечаем совпадения по позиции.
+  for (let i = 0; i < WORD_LENGTH; i++) {
+    if (guess[i] === answer[i]) {
+      result[i] = "correct";
+      remaining[i] = null;
+    }
+  }
+
+  // Затем учитываем буквы в других позициях и повторы.
+  for (let i = 0; i < WORD_LENGTH; i++) {
+    if (result[i] === "correct") continue;
+
+    const found = remaining.indexOf(guess[i]);
+
+    if (found !== -1) {
+      result[i] = "present";
+      remaining[found] = null;
+    }
+  }
+
+  return result;
+}
+
+function updateKeyboard() {
+  Object.values(keyElements).forEach(key => {
+    key.classList.remove("correct", "present", "absent");
+  });
+
+  const priority = { absent: 1, present: 2, correct: 3 };
+
+  guesses.forEach(guess => {
+    const result = scoreGuess(guess, target);
+
+    [...guess].forEach((letter, index) => {
+      const key = keyElements[letter];
+      if (!key) return;
+
+      const next = result[index];
+      const current = ["correct", "present", "absent"].find(
+        className => key.classList.contains(className)
+      );
+
+      if (!current || priority[next] > priority[current]) {
+        key.classList.remove("correct", "present", "absent");
+        key.classList.add(next);
+      }
+    });
+  });
+}
+
+function addLetter(letter) {
+  if (finished || currentGuess.length >= WORD_LENGTH) return;
+
+  const normalized = normalize(letter);
+
+  if (!/^[А-Я]$/.test(normalized)) return;
+
+  currentGuess += normalized;
+  renderBoard();
+}
+
+function deleteLetter() {
+  if (finished || !currentGuess.length) return;
+
+  currentGuess = currentGuess.slice(0, -1);
+  renderBoard();
+}
+
+function submitGuess() {
+  if (finished) return;
+
+  if (currentGuess.length !== WORD_LENGTH) {
+    showMessage("Нужно ввести 5 букв");
+    return;
+  }
+
+  if (!validWords.has(currentGuess)) {
+    showMessage("Такого слова нет в словаре");
+    return;
+  }
+
+  guesses.push(currentGuess);
+  currentGuess = "";
+
+  renderBoard();
+  updateKeyboard();
+
+  if (guesses[guesses.length - 1] === target) {
+    finishGame(true);
+    return;
+  }
+
+  if (guesses.length >= MAX_ATTEMPTS) {
+    finishGame(false);
+    return;
+  }
+
+  saveDailyGame();
+}
+
+function finishGame(won) {
+  finished = true;
+  gameResult = won ? "win" : "loss";
+
+  if (won) {
+    showMessage("Красиво! Ты угадал слово 🎉", 0);
+  } else {
+    showMessage(`Попытки закончились. Слово: ${target}`, 0);
+  }
+
+  if (mode === "daily") {
+    updateDailyStats(won);
+    saveDailyGame();
+  }
+
+  renderBoard();
+  updateKeyboard();
+  renderStats();
+}
+
+function updateDailyStats(won) {
+  if (stats.lastPlayed === todayKey()) return;
+
+  stats.played += 1;
+  stats.lastPlayed = todayKey();
+
+  if (won) {
+    stats.wins += 1;
+    stats.streak += 1;
+    stats.maxStreak = Math.max(stats.maxStreak, stats.streak);
+    stats.distr
+
+
+ibution[guesses.length - 1] += 1;
+  } else {
+    stats.streak = 0;
+  }
+
+  writeStorage(STATS_KEY, stats);
+}
+
+function saveDailyGame() {
+  if (mode !== "daily") return;
+
+  writeStorage(STORAGE_KEY, {
+    date: todayKey(),
+    guesses,
+    finished,
+    gameResult
+  });
+}
+
+function loadDailyGame() {
+  const saved = readStorage(STORAGE_KEY, null);
+
+  if (!saved || saved.date !== todayKey()) return;
+
+  const restored = Array.isArray(saved.guesses)
+    ? saved.guesses
+        .map(normalize)
+        .filter(word => /^[А-Я]{5}$/.test(word))
+        .slice(0, MAX_ATTEMPTS)
+    : [];
+
+  guesses = restored;
+  finished = Boolean(saved.finished);
+  gameResult = saved.gameResult || "";
+
+  if (finished) {
+    showMessage(
+      gameResult === "win"
+        ? "Ты уже угадал слово дня!"
+        : `Слово дня: ${target}`,
+      0
+    );
+  }
+}
+
+function startDailyGame() {
+  mode = "daily";
+  target = dailyWord();
+  guesses = [];
+  currentGuess = "";
+  finished = false;
+  gameResult = "";
+
+  loadDailyGame();
+  renderBoard();
+  updateKeyboard();
+
+  if (!finished) {
+    showMessage("Слово дня готово. Удачи!", 1500);
+  }
+}
+
+function startTrainingGame() {
+  mode = "training";
+  target = randomWord(dailyWord());
+  guesses = [];
+  currentGuess = "";
+  finished = false;
+  gameResult = "";
+
+  renderBoard();
+  updateKeyboard();
+  showMessage("Тренировка началась! Новое слово 🎮", 2000);
+}
+
+function renderStats() {
+  const played = document.getElementById("stat-played");
+  const wins = document.getElementById("stat-wins");
+  const streak = document.getElementById("stat-streak");
+  const maxStreak = document.getElementById("stat-max-streak");
+  const distribution = document.getElementById("stats-distribution");
+
+  if (played) played.textContent = stats.played;
+  if (wins) {
+    wins.textContent = stats.played
+      ? `${Math.round((stats.wins / stats.played) * 100)}%`
+      : "0%";
+  }
+  if (streak) streak.textContent = stats.streak;
+  if (maxStreak) maxStreak.textContent = stats.maxStreak;
+
+  if (distribution) {
     distribution.replaceChildren();
+
+    const max = Math.max(1, ...stats.distribution);
 
     stats.distribution.forEach((count, index) => {
       const row = document.createElement("div");
@@ -392,98 +506,117 @@ ateElement("button");
 
       const bar = document.createElement("div");
       bar.className = "distribution-bar";
-      bar.textContent = String(count);
-      bar.style.width =
-        Math.max(24, count / Math.max(1, ...stats.distribution) * 100) + "%";
 
-      if (won && guesses.length === index + 1) {
-        bar.classList.add("highlight");
-      }
+      const fill = document.createElement("div");
+      fill.className = "distribution-fill";
+      fill.style.width = `${(count / max) * 100}%`;
+      fill.textContent = String(count);
 
+      bar.appendChild(fill);
       row.append(label, bar);
       distribution.appendChild(row);
     });
   }
+}
 
-  function shareResult() {
-    if (!finished) {
-      showMessage("Сначала закончи игру!");
-      return;
-    }
+function resultText() {
+  const lines = guesses.map(guess =>
+    scoreGuess(guess, target).map(status => {
+      if (status === "correct") return "🟪";
+      if (status === "present") return "🟨";
+      return "⬛";
+    }).join("")
+  );
 
-    const squares = {
-      correct: "🟩",
-      present: "🟨",
-      absent: "⬛"
-    };
+  const heading = mode === "daily"
+    ? "FUNNLORN WORDLE — слово дня"
+    : "FUNNLORN WORDLE — тренировка";
 
-    const grid = guesses.map(guess =>
-      evaluateGuess(guess, daily.answer)
-        .map(state => squares[state])
-        .join("")
-    ).join("\n");
+  const outcome = gameResult === "win"
+    ? `${guesses.length}/${MAX_ATTEMPTS}`
+    : `X/${MAX_ATTEMPTS}`;
 
-    const result = [
-      `FUNNLORN WORDLE #${daily.number}`,
-      won ? `${guesses.length}/${ROWS}` : `X/${ROWS}`,
-      "",
-      grid,
-      "",
-      "Попробуй и ты!"
-    ].join("\n");
+  return `${heading}\n${outcome}\n\n${lines.join("\n")}`;
+}
 
+async function shareResult() {
+  if (!finished) {
+    showMessage("Сначала закончи игру!");
+    return;
+  }
+
+  const text = resultText();
+
+  try {
     if (navigator.share) {
-      navigator.share({ text: result }).catch(() => {});
-    } else if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(result)
-        .then(() => showMessage("Результат скопирован!"))
-        .catch(() => showMessage("Не удалось скопировать результат"));
+      await navigator.share({ text });
+    } else if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      showMessage("Результат скопирован!");
     } else {
-      showMessage("Поделиться можно после публикации сайта по HTTPS");
+      showMessage("Не удалось поделиться на этом устройстве");
+    }
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      showMessage("Не удалось поделиться результатом");
     }
   }
+}
 
-  function restartGame() {
-    if (finished) {
-      showMessage("Слово дня уже сыграно. Возвращайся завтра!");
-      return;
-    }
+function handlePhysicalKeyboard(event) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
 
-    current = "";
-    renderBoard();
-    showMessage("Продолжаем угадывать!");
+  if (event.key === "Enter") {
+    event.preventDefault();
+    submitGuess();
+    return;
   }
 
-  function handlePhysicalKeyboard(event) {
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.key === "Backspace") {
+    event.preventDefault();
+    deleteLetter();
 
-    if (event.key === "Enter") {
-      event.preventDefault();
-      handleKey("ENTER");
-    } else if (event.key === "Backspace") {
-      event.preventDefault();
-      handleKey("BACKSPACE");
-    } else if (/^[а-яё]$/i.test(event.key)) {
-      event.preventDefault();
-      handleKey(event.key);
-    }
+
+return;
+
   }
 
-  $("share-button").addEventListener("click", shareResult);
-  $("restart-button").addEventListener("click", restartGame);
-  document.addEventListener("keydown", handlePhysicalKeyboard);
+  if (/^[а-яё]$/i.test(event.key)) {
 
-  restoreGame();
+    addLetter(event.key);
+
+  }
+
+}
+
+if (restartButton) {
+
+  restartButton.addEventListener("click", startTrainingGame);
+
+}
+
+if (shareButton) {
+
+  shareButton.addEventListener("click", shareResult);
+
+}
+
+document.addEventListener("keydown", handlePhysicalKeyboard);
+
+// Дополнительная защита от пустого или невалидного словаря.
+
+if (!answers.length) {
+
+  showMessage("Ошибка словаря: нет подходящих слов", 0);
+
+} else {
+
   createBoard();
+
   createKeyboard();
-  renderBoard();
-  renderKeyboard();
+
+  startDailyGame();
+
   renderStats();
 
-  if (finished) {
-    showMessage(won
-      ? "Ты уже угадал слово дня! 🎉"
-      : `Игра завершена. Слово: ${daily.answer}`
-    );
-  }
-})();.cre
+}
